@@ -1,0 +1,8 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "home_service_agent": "./src/home_service_agent/server_graph.py:graph"
+  },
+  "env": ".env"
+}
+
