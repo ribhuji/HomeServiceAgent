@@ -51,6 +51,21 @@ class MockProviderAPI:
         self._cancel_attempts: dict[str, int] = {}
         self._booking_counter = 0
         self._hold_counter = 0
+        self._book_call_count = 0
+        self._cancel_call_count = 0
+        self._reschedule_call_count = 0
+
+    @property
+    def book_call_count(self) -> int:
+        return self._book_call_count
+
+    @property
+    def cancel_call_count(self) -> int:
+        return self._cancel_call_count
+
+    @property
+    def reschedule_call_count(self) -> int:
+        return self._reschedule_call_count
 
     def search_providers(
         self,
@@ -100,6 +115,7 @@ class MockProviderAPI:
     def book(self, hold_id: str, booking_id: str, idempotency_key: str) -> str:
         """Book a hold, preserving idempotency across repeated requests."""
 
+        self._book_call_count += 1
         if idempotency_key in self._booking_by_idempotency:
             return self._booking_by_idempotency[idempotency_key]
 
@@ -139,6 +155,7 @@ class MockProviderAPI:
         return booking.model_copy(deep=True) if booking else None
 
     def cancel(self, booking_id: str, idempotency_key: str) -> str:
+        self._cancel_call_count += 1
         booking = self._booking(booking_id)
         attempts = self._cancel_attempts.get(idempotency_key, 0)
         if attempts < self.scenario.cancel_transient_failures:
@@ -150,6 +167,7 @@ class MockProviderAPI:
         return booking_id
 
     def reschedule(self, booking_id: str, new_slot: str, idempotency_key: str) -> Booking:
+        self._reschedule_call_count += 1
         booking = self._booking(booking_id)
         if new_slot in self.scenario.reschedule_conflict_slots:
             raise ProviderToolError("slot_conflict", f"Slot {new_slot!r} is unavailable")
