@@ -62,6 +62,8 @@ class ServiceRequest(DomainModel):
         unknown = set(updates) - set(type(self).model_fields)
         if unknown:
             raise ValueError(f"Unknown request fields: {sorted(unknown)}")
+        if updates.get("preferences") is None:
+            updates.pop("preferences", None)
         if "preferences" in updates and updates["preferences"] is not None:
             updates["preferences"] = {
                 **self.preferences,
@@ -173,7 +175,13 @@ ALLOWED_TRANSITIONS: dict[WorkflowPhase, frozenset[WorkflowPhase]] = {
         }
     ),
     WorkflowPhase.COMMITTING: frozenset(
-        {WorkflowPhase.VERIFYING, WorkflowPhase.FAILED, WorkflowPhase.ABORTED_LIMIT}
+        {
+            WorkflowPhase.VERIFYING,
+            WorkflowPhase.CONFLICT,
+            WorkflowPhase.EXPIRED,
+            WorkflowPhase.FAILED,
+            WorkflowPhase.ABORTED_LIMIT,
+        }
     ),
     WorkflowPhase.VERIFYING: frozenset(
         {WorkflowPhase.COMPLETED, WorkflowPhase.COMMITTING, WorkflowPhase.FAILED}

@@ -8,6 +8,9 @@ data/
 *.db
 *.sqlite
 *.sqlite3
+reports/
+.env
 FoundingEngineer-Assignment.pdf
 IMPLEMENTATION_CHECKLIST.md
 DESIGN.md
+BUGS.md

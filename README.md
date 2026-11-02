@@ -33,3 +33,16 @@ The implementation plan is tracked in
 [IMPLEMENTATION_CHECKLIST.md](IMPLEMENTATION_CHECKLIST.md), and the design is
 in [DESIGN.md](DESIGN.md).
 
+## Optional live OpenRouter model
+
+The offline scripted model is used by tests and evals. For a live demo, create a
+local environment file and add an OpenRouter key:
+
+```bash
+cp .env.example .env
+# edit .env and set OPENROUTER_API_KEY
+```
+
+The default model is `nvidia/nemotron-3-ultra-550b-a55b:free`. Never commit
+`.env`; it is ignored by git.
+
