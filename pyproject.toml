@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "home-service-agent"
+version = "0.1.0"
+description = "A safe chat agent for booking home-service errands."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "langgraph>=0.6,<1",
+    "pydantic>=2.10,<3",
+    "uvicorn[standard]>=0.34,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.28,<1",
+    "pytest>=8.3,<9",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
