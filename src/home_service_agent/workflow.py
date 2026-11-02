@@ -5,7 +5,7 @@ from typing import NotRequired, TypedDict
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
-from .domain import Provider, WorkflowPhase, WorkflowState, transition
+from .domain import Provider, RequestUpdate, WorkflowPhase, WorkflowState, transition
 from .mocks.provider_api import MockProviderAPI
 
 
@@ -13,19 +13,33 @@ class GraphState(TypedDict):
     workflow: WorkflowState
     providers: NotRequired[list[Provider]]
     user_message: NotRequired[str]
+    request_update: NotRequired[RequestUpdate | None]
 
 
 def collect_fields(state: GraphState) -> dict[str, object]:
     workflow = state["workflow"]
+    if workflow.phase is WorkflowPhase.NEEDS_CORRECTION:
+        workflow = transition(workflow, WorkflowPhase.COLLECTING)
+
+    request_update = state.get("request_update")
+    if request_update is not None:
+        workflow = workflow.model_copy(
+            update={"request": workflow.request.apply_update(**request_update.supplied_fields())}
+        )
+
     missing = workflow.request.missing_fields()
     if missing:
         updated = transition(workflow, WorkflowPhase.NEEDS_CORRECTION)
         return {
             "workflow": updated,
             "user_message": f"Please provide: {', '.join(missing)}.",
+            "request_update": None,
         }
 
-    return {"workflow": transition(workflow, WorkflowPhase.SEARCHING)}
+    return {
+        "workflow": transition(workflow, WorkflowPhase.SEARCHING),
+        "request_update": None,
+    }
 
 
 def route_after_collection(state: GraphState) -> str:

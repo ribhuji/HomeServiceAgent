@@ -62,7 +62,29 @@ class ServiceRequest(DomainModel):
         unknown = set(updates) - set(type(self).model_fields)
         if unknown:
             raise ValueError(f"Unknown request fields: {sorted(unknown)}")
+        if "preferences" in updates and updates["preferences"] is not None:
+            updates["preferences"] = {
+                **self.preferences,
+                **updates["preferences"],
+            }
         return self.model_copy(update=updates)
+
+
+class RequestUpdate(DomainModel):
+    """Structured fields extracted from one user message.
+
+    Unset fields are intentionally distinct from fields supplied in a correction
+    so a message never clears unrelated facts by accident.
+    """
+
+    service: str | None = None
+    area: str | None = None
+    time_window: str | None = None
+    budget: int | None = Field(default=None, ge=0)
+    preferences: dict[str, str] | None = None
+
+    def supplied_fields(self) -> dict[str, Any]:
+        return self.model_dump(exclude_unset=True)
 
 
 class Provider(DomainModel):

@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from home_service_agent.domain import (
     BookingStatus,
+    RequestUpdate,
     ServiceRequest,
     TerminalOutcome,
     ToolError,
@@ -36,6 +37,15 @@ def test_request_correction_preserves_unrelated_known_facts() -> None:
     assert corrected.time_window == request.time_window
     assert corrected.budget == request.budget
     assert corrected.preferences == request.preferences
+
+
+def test_request_update_tracks_only_fields_supplied_by_user() -> None:
+    update = RequestUpdate(area="Koramangala", preferences={"technician": "preferred"})
+
+    assert update.supplied_fields() == {
+        "area": "Koramangala",
+        "preferences": {"technician": "preferred"},
+    }
 
 
 def test_invalid_values_and_extra_fields_are_rejected() -> None:
