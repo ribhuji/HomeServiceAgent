@@ -1,8 +1,10 @@
 """LangGraph workflow skeleton for the Home-Service Agent."""
 
 from typing import NotRequired, TypedDict
+import sqlite3
 
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 
 from .domain import Provider, RequestUpdate, WorkflowPhase, WorkflowState, transition
@@ -106,7 +108,8 @@ def terminal_outcome(state: GraphState) -> GraphState:
 def build_graph(
     provider_api: MockProviderAPI | None = None,
     *,
-    checkpointer: MemorySaver | None = None,
+    checkpointer: MemorySaver | SqliteSaver | None = None,
+    checkpoint_path: str | None = None,
 ):
     """Build the workflow graph with injectable dependencies for tests."""
 
@@ -129,5 +132,9 @@ def build_graph(
     graph.add_edge("search_providers", "present_options")
     graph.add_edge("present_options", END)
 
+    if checkpointer is None and checkpoint_path is not None:
+        connection = sqlite3.connect(checkpoint_path, check_same_thread=False)
+        checkpointer = SqliteSaver(connection)
+        checkpointer.setup()
     return graph.compile(checkpointer=checkpointer or MemorySaver())
 

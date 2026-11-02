@@ -35,9 +35,9 @@ def extract_request_update(content: str) -> RequestUpdate:
 
 
 class ChatAgent:
-    def __init__(self, model: ChatModel | None = None) -> None:
+    def __init__(self, model: ChatModel | None = None, *, checkpoint_path: str | None = None) -> None:
         self.model = model or OpenRouterClient()
-        self.graph = build_graph()
+        self.graph = build_graph(checkpoint_path=checkpoint_path)
 
     def handle(self, *, user_id: str, message: str, thread_id: str | None = None) -> dict[str, Any]:
         thread_id = thread_id or str(uuid4())
