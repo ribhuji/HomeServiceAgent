@@ -13,7 +13,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
-from .chat import ChatAgent, ChatModel
+from home_service_agent.chat import ChatAgent, ChatModel
 
 
 class ServerState(TypedDict):
@@ -26,7 +26,7 @@ def build_server_graph(model: ChatModel | None = None):
     def respond(state: ServerState, config: RunnableConfig) -> dict[str, list[AIMessage]]:
         last_message = state["messages"][-1]
         thread_id = config.get("configurable", {}).get("thread_id", "local-ui-thread")
-        user_id = config.get("configurable", {}).get("user_id", thread_id)
+        user_id = config.get("configurable", {}).get("user_id") or thread_id
         result = agent.handle(
             user_id=user_id,
             thread_id=thread_id,

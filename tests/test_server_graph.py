@@ -28,3 +28,15 @@ def test_server_graph_exposes_messages_channel_and_returns_ai_message() -> None:
     assert result["messages"][-1].type == "ai"
     assert "provider options" in result["messages"][-1].content.lower()
 
+
+def test_server_graph_uses_thread_id_when_ui_sends_empty_user_id() -> None:
+    graph = build_server_graph(FakeModel())
+
+    result = graph.invoke(
+        {"messages": [HumanMessage(content="Find a plumber in Indiranagar this week")]},
+        {"configurable": {"thread_id": "empty-user-id-thread", "user_id": ""}},
+    )
+
+    assert result["messages"][-1].type == "ai"
+    assert "provider options" in result["messages"][-1].content.lower()
+

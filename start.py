@@ -39,6 +39,11 @@ def prepare_environment(paths: StoragePaths) -> dict[str, str]:
     environment["HOME_SERVICE_AGENT_CHECKPOINT_DB"] = str(paths.checkpoints_db)
     environment["NEXT_PUBLIC_API_URL"] = "http://127.0.0.1:2024"
     environment["NEXT_PUBLIC_ASSISTANT_ID"] = "home_service_agent"
+    python313 = shutil.which("python3.13")
+    if python313:
+        # The Node CLI launches Python in an isolated environment; Python 3.13
+        # avoids the native jsonschema-rs compatibility issue on Python 3.14.
+        environment["UV_PYTHON"] = python313
     return environment
 
 
@@ -93,10 +98,20 @@ def start_stack() -> int:
     commands = build_commands(npm)
     processes: list[subprocess.Popen[str]] = []
     try:
+        langgraph_environment = environment.copy()
+        # The CLI runs the graph in a separate dependency environment. Keep
+        # its nested ChatAgent in memory; the SQLite checkpointer is used by
+        # the project runtime and FastAPI process, where versions are aligned.
+        langgraph_environment.pop("HOME_SERVICE_AGENT_CHECKPOINT_DB", None)
         print(f"Initialized local storage in {paths.data_dir}")
         print("Starting LangGraph server on http://127.0.0.1:2024")
         processes.append(
-            subprocess.Popen(commands["langgraph"], cwd=UI_ROOT, env=environment, start_new_session=True)
+            subprocess.Popen(
+                commands["langgraph"],
+                cwd=UI_ROOT,
+                env=langgraph_environment,
+                start_new_session=True,
+            )
         )
         wait_for_http("http://127.0.0.1:2024/info", processes[-1])
 
