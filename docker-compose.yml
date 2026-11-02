@@ -1,0 +1,39 @@
+services:
+  langgraph:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      target: langgraph
+    environment:
+      HOME_SERVICE_AGENT_MEMORY_DB: /app/data/agent.db
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-nvidia/nemotron-3-ultra-550b-a55b:free}
+    ports:
+      - "2024:2024"
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:2024/info', timeout=2)
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:2024
+      NEXT_PUBLIC_ASSISTANT_ID: home_service_agent
+    depends_on:
+      langgraph:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+

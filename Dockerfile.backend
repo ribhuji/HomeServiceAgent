@@ -1,0 +1,26 @@
+FROM python:3.13-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_PYTHON=python3.13
+
+WORKDIR /app
+
+COPY pyproject.toml ./
+COPY langgraph.json ./
+COPY src ./src
+RUN touch .env
+
+RUN python -m pip install --no-cache-dir --upgrade pip \
+    && python -m pip install --no-cache-dir -e .
+
+FROM base AS langgraph
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends nodejs npm \
+    && npm install --global @langchain/langgraph-cli@0.0.16 \
+    && apt-get purge --yes npm \
+    && apt-get autoremove --yes \
+    && rm -rf /var/lib/apt/lists/*
+
+CMD ["langgraphjs", "dev", "--no-browser", "--host", "0.0.0.0", "--port", "2024", "--config", "/app/langgraph.json"]

@@ -1,0 +1,14 @@
+FROM node:22-bookworm-slim
+
+WORKDIR /app
+
+COPY ui/home-service-agent-ui/package.json ui/home-service-agent-ui/package-lock.json ./
+COPY ui/home-service-agent-ui/apps/web/package.json ./apps/web/package.json
+RUN npm ci --no-audit --no-fund
+
+COPY ui/home-service-agent-ui/ ./
+
+ENV NEXT_PUBLIC_API_URL=http://localhost:2024 \
+    NEXT_PUBLIC_ASSISTANT_ID=home_service_agent
+
+CMD ["./node_modules/.bin/next", "dev", "apps/web", "--hostname", "0.0.0.0"]
