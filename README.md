@@ -15,6 +15,23 @@ python -m pip install -e '.[dev]'
 
 ## Run and test
 
+Start the complete local visual stack (LangGraph server, FastAPI compatibility
+service, and Agent Chat UI):
+
+```bash
+HomeServiceAgent-venv/bin/python start.py
+```
+
+Then open `http://127.0.0.1:3000`. The launcher initializes ignored SQLite
+files under `data/` and shuts down all child processes on Ctrl+C. Install the
+UI dependencies once beforehand with:
+
+```bash
+cd ui/home-service-agent-ui
+npm install
+cd ../..
+```
+
 Start the local API:
 
 ```bash

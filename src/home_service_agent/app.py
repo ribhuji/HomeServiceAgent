@@ -1,5 +1,7 @@
 """HTTP entry point for the Home-Service Agent."""
 
+import os
+
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
@@ -9,7 +11,7 @@ from .config import Settings
 
 settings = Settings.from_env()
 app = FastAPI(title="Home-Service Agent", version="0.1.0")
-chat_agent = ChatAgent()
+chat_agent = ChatAgent(checkpoint_path=os.getenv("HOME_SERVICE_AGENT_CHECKPOINT_DB"))
 
 
 class ChatRequest(BaseModel):
