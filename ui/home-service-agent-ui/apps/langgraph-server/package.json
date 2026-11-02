@@ -1,0 +1,8 @@
+{
+  "name": "langgraph-server",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "npx @langchain/langgraph-cli dev --port 2024 --config ../../langgraph.json"
+  }
+}
