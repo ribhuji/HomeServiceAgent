@@ -21,3 +21,13 @@ def test_offline_eval_run_generates_passing_table_and_timeout_trace(tmp_path: Pa
     content = trace.read_text(encoding="utf-8")
     assert "tool_call" in content
 
+
+def test_offline_eval_run_is_reproducible_when_output_directory_is_reused(tmp_path: Path) -> None:
+    first = run_evals(tmp_path)
+    second = run_evals(tmp_path)
+
+    assert all(result.passed for result in first)
+    assert all(result.passed for result in second)
+    restart = next(result for result in second if result.scenario == "restart-mid-booking")
+    assert restart.actual == "COMPLETED/1"
+

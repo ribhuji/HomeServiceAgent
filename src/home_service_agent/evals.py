@@ -302,6 +302,11 @@ def run_evals(output_dir: str | Path = "reports") -> list[EvalResult]:
 
     checkpoint = str(output_dir / "restart-checkpoint.db")
     approvals = str(output_dir / "restart-approvals.db")
+    # Eval output is reproducible even when the same reports directory is
+    # reused. These files belong exclusively to this generated eval run.
+    for generated_database in (Path(checkpoint), Path(approvals), output_dir / "memory.db"):
+        if generated_database.exists():
+            generated_database.unlink()
     api = MockProviderAPI()
     model = ScriptedModel([_call("search_providers", {"service": "plumber", "area": "Indiranagar", "time_window": "this week"}, "search")])
     first_agent = ChatAgent(model, provider_api=api, checkpoint_path=checkpoint, approval_database=approvals, trace_directory=output_dir / "traces")

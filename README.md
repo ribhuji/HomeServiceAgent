@@ -70,6 +70,14 @@ The implementation plan is tracked in
 [IMPLEMENTATION_CHECKLIST.md](IMPLEMENTATION_CHECKLIST.md), and the design is
 in [DESIGN.md](DESIGN.md).
 
+## Submission deliverables
+
+- [Design note](DESIGN.md): state model, approval, recovery, memory, and observability.
+- [Generated eval table](deliverables/eval_table.csv): produced by `scripts/run_evals.py`.
+- [Bug report](BUGS.md): three implementation bugs and their regression tests.
+- [Timeout-after-success trace](deliverables/timeout-after-success.jsonl): raw JSONL trace.
+- Recorded demo: to be added after the local screen recording.
+
 ## Optional live OpenRouter model
 
 The offline scripted model is used by tests and evals. For a live demo, create a
