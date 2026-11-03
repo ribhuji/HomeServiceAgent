@@ -4,6 +4,8 @@ from dataclasses import dataclass
 import time
 from typing import Callable, TypeVar
 
+import httpx
+
 from .domain import TerminalOutcome, ToolError, WorkflowPhase, WorkflowState
 
 
@@ -78,6 +80,14 @@ def terminal_for_exception(
         phase = WorkflowPhase.ABORTED_LIMIT
         message = f"I stopped because the {error.resource} limit was reached. Please try again."
         tool_error = ToolError(code="execution_limit", message=str(error), retryable=False)
+    elif isinstance(error, httpx.TimeoutException):
+        phase = WorkflowPhase.FAILED
+        message = "The model provider did not respond in time. Please try again."
+        tool_error = ToolError(code="model_timeout", message="model provider timeout", retryable=True)
+    elif isinstance(error, httpx.HTTPStatusError) and error.response.status_code == 429:
+        phase = WorkflowPhase.FAILED
+        message = "The model provider is rate-limiting requests. Please wait a moment and try again."
+        tool_error = ToolError(code="model_rate_limited", message="model provider rate limit", retryable=True)
     else:
         phase = WorkflowPhase.FAILED
         message = "I couldn't complete that request because an unexpected error occurred. Please try again."

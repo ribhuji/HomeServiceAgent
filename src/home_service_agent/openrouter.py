@@ -77,7 +77,10 @@ class OpenRouterClient:
         if self.config.app_name:
             headers["X-Title"] = self.config.app_name
 
-        with httpx.Client(base_url=self.config.base_url, timeout=self.timeout) as client:
+        # Keep slow model responses possible, but do not let a dead upstream
+        # connection occupy a LangGraph worker for the full read timeout.
+        timeout = httpx.Timeout(self.timeout, connect=min(self.timeout, 15.0))
+        with httpx.Client(base_url=self.config.base_url, timeout=timeout) as client:
             response = client.post("/chat/completions", headers=headers, json=payload)
             response.raise_for_status()
             return response.json()

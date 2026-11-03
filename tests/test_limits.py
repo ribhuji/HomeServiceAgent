@@ -1,4 +1,5 @@
 import pytest
+import httpx
 
 from home_service_agent.domain import ServiceRequest, WorkflowPhase, WorkflowState
 from home_service_agent.limits import (
@@ -81,4 +82,24 @@ def test_unknown_errors_have_clear_non_secret_terminal_message() -> None:
     assert "unexpected error" in outcome.message
     assert "super-secret" not in outcome.message
     assert outcome.error.message == "unexpected execution error"
+
+
+def test_model_timeout_has_actionable_terminal_message() -> None:
+    state = WorkflowState(run_id="run-1", user_id="user-1")
+    _, outcome = terminal_for_exception(state, httpx.ConnectTimeout("upstream timeout"))
+
+    assert outcome.phase is WorkflowPhase.FAILED
+    assert outcome.error.code == "model_timeout"
+    assert "did not respond in time" in outcome.message
+
+
+def test_model_rate_limit_has_actionable_terminal_message() -> None:
+    state = WorkflowState(run_id="run-1", user_id="user-1")
+    request = httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
+    response = httpx.Response(429, request=request)
+    _, outcome = terminal_for_exception(state, httpx.HTTPStatusError("rate limited", request=request, response=response))
+
+    assert outcome.phase is WorkflowPhase.FAILED
+    assert outcome.error.code == "model_rate_limited"
+    assert "rate-limiting" in outcome.message
 

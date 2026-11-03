@@ -1,5 +1,6 @@
 services:
   langgraph:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: Dockerfile.backend
@@ -29,6 +30,7 @@ services:
       retries: 20
 
   web:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: Dockerfile.web
