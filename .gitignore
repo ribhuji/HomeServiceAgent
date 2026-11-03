@@ -12,8 +12,6 @@ reports/
 .env
 FoundingEngineer-Assignment.pdf
 IMPLEMENTATION_CHECKLIST.md
-DESIGN.md
-BUGS.md
 LOCAL_UI_INTEGRATION_PLAN.md
 
 # LangGraph API
