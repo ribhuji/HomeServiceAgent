@@ -109,6 +109,13 @@ class Booking(DomainModel):
     status: BookingStatus
 
 
+class BookingStatusResult(DomainModel):
+    """Authoritative result returned by the provider status lookup."""
+
+    status: BookingStatus
+    booking_id: str | None = None
+
+
 class ToolError(DomainModel):
     code: str = Field(min_length=1)
     message: str = Field(min_length=1)
@@ -141,6 +148,8 @@ class WorkflowState(DomainModel):
     booking_id: str | None = None
     idempotency_key: str | None = None
     booking_status: BookingStatus | None = None
+    pending_action: str | None = None
+    pending_new_slot: str | None = None
 
 
 TERMINAL_PHASES = frozenset(
@@ -163,7 +172,12 @@ ALLOWED_TRANSITIONS: dict[WorkflowPhase, frozenset[WorkflowPhase]] = {
         {WorkflowPhase.AWAITING_APPROVAL, WorkflowPhase.COLLECTING, WorkflowPhase.ABORTED_LIMIT}
     ),
     WorkflowPhase.AWAITING_APPROVAL: frozenset(
-        {WorkflowPhase.HOLDING, WorkflowPhase.COLLECTING, WorkflowPhase.ABORTED_LIMIT}
+        {
+            WorkflowPhase.HOLDING,
+            WorkflowPhase.OPTIONS_READY,
+            WorkflowPhase.COLLECTING,
+            WorkflowPhase.ABORTED_LIMIT,
+        }
     ),
     WorkflowPhase.HOLDING: frozenset(
         {
@@ -187,8 +201,8 @@ ALLOWED_TRANSITIONS: dict[WorkflowPhase, frozenset[WorkflowPhase]] = {
         {WorkflowPhase.COMPLETED, WorkflowPhase.COMMITTING, WorkflowPhase.FAILED}
     ),
     WorkflowPhase.NEEDS_CORRECTION: frozenset({WorkflowPhase.COLLECTING}),
-    WorkflowPhase.CONFLICT: frozenset({WorkflowPhase.AWAITING_APPROVAL, WorkflowPhase.FAILED}),
-    WorkflowPhase.EXPIRED: frozenset({WorkflowPhase.AWAITING_APPROVAL, WorkflowPhase.FAILED}),
+    WorkflowPhase.CONFLICT: frozenset({WorkflowPhase.OPTIONS_READY, WorkflowPhase.AWAITING_APPROVAL, WorkflowPhase.FAILED}),
+    WorkflowPhase.EXPIRED: frozenset({WorkflowPhase.OPTIONS_READY, WorkflowPhase.AWAITING_APPROVAL, WorkflowPhase.FAILED}),
     WorkflowPhase.FAILED: frozenset(),
     WorkflowPhase.COMPLETED: frozenset(),
     WorkflowPhase.ABORTED_LIMIT: frozenset(),

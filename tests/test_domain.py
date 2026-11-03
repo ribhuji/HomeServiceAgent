@@ -73,6 +73,22 @@ def test_valid_transition_returns_new_state_without_mutating_input() -> None:
     assert searching.run_id == state.run_id
 
 
+@pytest.mark.parametrize(
+    ("source", "target"),
+    [
+        (WorkflowPhase.AWAITING_APPROVAL, WorkflowPhase.OPTIONS_READY),
+        (WorkflowPhase.CONFLICT, WorkflowPhase.OPTIONS_READY),
+        (WorkflowPhase.EXPIRED, WorkflowPhase.OPTIONS_READY),
+    ],
+)
+def test_recovery_states_can_return_to_displayed_options(source: WorkflowPhase, target: WorkflowPhase) -> None:
+    state = WorkflowState(run_id="run-1", user_id="user-1", phase=source)
+
+    recovered = transition(state, target)
+
+    assert recovered.phase is target
+
+
 def test_terminal_outcome_requires_terminal_phase() -> None:
     outcome = TerminalOutcome(
         phase=WorkflowPhase.FAILED,

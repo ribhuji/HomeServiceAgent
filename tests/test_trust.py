@@ -9,6 +9,7 @@ from home_service_agent.trust import (
     provider_reviews_as_data,
     render_untrusted_context,
     sanitize_tool_text,
+    injection_hints,
 )
 
 
@@ -65,4 +66,14 @@ def test_untrusted_reviews_cannot_create_approval_or_authorize_action() -> None:
     assert action.provider_id == "provider-1"
     with pytest.raises(ApprovalError, match="Explicit approval"):
         ledger.require_valid("run-1", action, None)
+
+
+def test_injection_detection_is_non_blocking_observability() -> None:
+    details = MockProviderAPI().get_provider("provider-1")
+    items = provider_reviews_as_data(details)
+
+    flags = injection_hints(items)
+
+    assert flags == ["provider:provider-1:review:1"]
+    assert all(item.trust == "untrusted_data" for item in items)
 

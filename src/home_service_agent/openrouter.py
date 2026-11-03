@@ -12,7 +12,7 @@ import httpx
 from dotenv import load_dotenv
 
 
-DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
+DEFAULT_MODEL = "nvidia/nemotron-3.5-super-vl:free"
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 
 

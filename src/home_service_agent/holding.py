@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 
 from .approval import ActionDescriptor, ActionType, ApprovalLedger
-from .domain import WorkflowPhase, WorkflowState
+from .domain import WorkflowPhase, WorkflowState, transition
 from .mocks.provider_api import Hold, MockProviderAPI, ProviderToolError
 
 
@@ -66,13 +66,12 @@ class HoldCoordinator:
             )
 
         return HoldOutcome(
-            workflow=state.model_copy(
+            workflow=transition(state.model_copy(
                 update={
-                    "phase": WorkflowPhase.HOLDING,
                     "hold_id": hold.hold_id,
                     "hold_expires_at": hold.expires_at,
                 }
-            ),
+            ), WorkflowPhase.HOLDING),
             message=f"Slot held until {hold.expires_at.isoformat()}.",
         )
 

@@ -6,7 +6,7 @@ from home_service_agent.mocks.provider_api import MockProviderAPI, MockScenario
 
 def booked_state(api: MockProviderAPI) -> WorkflowState:
     hold = api.hold_slot("provider-1", "Saturday 09:00")
-    api.book(hold.hold_id, "booking-1", "book-idem-1")
+    api.book(hold.hold_id, "book-idem-1")
     return WorkflowState(
         run_id="run-1",
         user_id="user-1",

@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 import hashlib
 import json
+import sqlite3
 from secrets import token_urlsafe
 from typing import Callable, TypeVar
 
@@ -69,9 +70,15 @@ class ApprovalRecord(DomainModel):
 class ApprovalLedger:
     """Small in-memory ledger; the persistence boundary can move to SQLite later."""
 
-    def __init__(self, *, approval_ttl: timedelta = timedelta(minutes=30)) -> None:
+    def __init__(self, *, approval_ttl: timedelta = timedelta(minutes=30), database: str | None = None) -> None:
         self.approval_ttl = approval_ttl
         self._records: dict[str, ApprovalRecord] = {}
+        self._connection = sqlite3.connect(database, check_same_thread=False) if database else None
+        if self._connection is not None:
+            self._connection.execute(
+                "CREATE TABLE IF NOT EXISTS approvals (approval_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, action_digest TEXT NOT NULL, approved_at TEXT NOT NULL, expires_at TEXT NOT NULL)"
+            )
+            self._connection.commit()
 
     def record_user_confirmation(self, run_id: str, action: ActionDescriptor) -> ApprovalRecord:
         """Record confirmation for the exact action shown to the user."""
@@ -85,6 +92,12 @@ class ApprovalLedger:
             expires_at=now + self.approval_ttl,
         )
         self._records[record.approval_id] = record
+        if self._connection is not None:
+            self._connection.execute(
+                "INSERT INTO approvals VALUES (?, ?, ?, ?, ?)",
+                (record.approval_id, record.run_id, record.action_digest, record.approved_at.isoformat(), record.expires_at.isoformat()),
+            )
+            self._connection.commit()
         return record
 
     def require_valid(
@@ -98,6 +111,15 @@ class ApprovalLedger:
         if approval_id is None:
             raise ApprovalError("Explicit approval is required")
         record = self._records.get(approval_id)
+        if record is None and self._connection is not None:
+            row = self._connection.execute(
+                "SELECT * FROM approvals WHERE approval_id = ?", (approval_id,)
+            ).fetchone()
+            if row is not None:
+                record = ApprovalRecord(
+                    approval_id=row[0], run_id=row[1], action_digest=row[2],
+                    approved_at=datetime.fromisoformat(row[3]), expires_at=datetime.fromisoformat(row[4]),
+                )
         if record is None:
             raise ApprovalError("Approval record was not found")
         if record.run_id != run_id:

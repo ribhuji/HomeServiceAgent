@@ -8,7 +8,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 
 from .domain import Provider, RequestUpdate, WorkflowPhase, WorkflowState, transition
-from .mocks.provider_api import MockProviderAPI
+from .mocks.provider_api import MockProviderAPI, ProviderToolError
 
 
 class GraphState(TypedDict):
@@ -57,11 +57,18 @@ def search_providers(
 ) -> dict[str, object]:
     workflow = state["workflow"]
     request = workflow.request
-    providers = provider_api.search_providers(
-        service=request.service or "",
-        area=request.area or "",
-        date_range=request.time_window or "",
-    )
+    try:
+        providers = provider_api.search_providers(
+            service=request.service or "",
+            area=request.area or "",
+            date_range=request.time_window or "",
+        )
+    except ProviderToolError as error:
+        return {
+            "workflow": transition(workflow, WorkflowPhase.FAILED),
+            "user_message": f"I could not search providers: {error.message}",
+            "providers": [],
+        }
     return {
         "workflow": transition(workflow, WorkflowPhase.OPTIONS_READY),
         "providers": providers,

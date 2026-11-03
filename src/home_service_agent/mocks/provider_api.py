@@ -5,7 +5,13 @@ from datetime import datetime, timedelta, timezone
 import random
 from typing import Literal
 
-from home_service_agent.domain import Booking, BookingStatus, Provider, ProviderDetails
+from home_service_agent.domain import (
+    Booking,
+    BookingStatus,
+    BookingStatusResult,
+    Provider,
+    ProviderDetails,
+)
 
 
 class ProviderToolError(RuntimeError):
@@ -23,8 +29,8 @@ class MockScenario:
 
     unavailable_slots: set[tuple[str, str]] = field(default_factory=set)
     quote_overrides: dict[tuple[str, str], int] = field(default_factory=dict)
-    book_outcome: Literal["success", "slot_taken", "timeout", "hold_expired"] = "success"
-    timeout_after_success: bool = False
+    book_outcome: Literal["random", "success", "slot_taken", "timeout", "hold_expired"] = "random"
+    timeout_after_success: bool | None = None
     cancel_transient_failures: int = 1
     reschedule_conflict_slots: set[str] = field(default_factory=set)
 
@@ -47,6 +53,7 @@ class MockProviderAPI:
         self._providers = self._build_providers()
         self._bookings: dict[str, Booking] = {}
         self._booking_by_idempotency: dict[str, str] = {}
+        self._failed_idempotency: set[str] = set()
         self._holds: dict[str, Hold] = {}
         self._cancel_attempts: dict[str, int] = {}
         self._booking_counter = 0
@@ -112,7 +119,7 @@ class MockProviderAPI:
         self._holds[hold_id] = hold
         return hold
 
-    def book(self, hold_id: str, booking_id: str, idempotency_key: str) -> str:
+    def book(self, hold_id: str, idempotency_key: str) -> str:
         """Book a hold, preserving idempotency across repeated requests."""
 
         self._book_call_count += 1
@@ -121,16 +128,19 @@ class MockProviderAPI:
 
         hold = self._holds.get(hold_id)
         if hold is None or hold.expires_at <= datetime.now(timezone.utc):
+            self._failed_idempotency.add(idempotency_key)
             raise ProviderToolError("hold_expired", "The slot hold has expired")
 
-        outcome = self.scenario.book_outcome
+        outcome = self._book_outcome()
         if outcome == "slot_taken":
+            self._failed_idempotency.add(idempotency_key)
             raise ProviderToolError("slot_taken", "The slot was taken before booking")
         if outcome == "hold_expired":
+            self._failed_idempotency.add(idempotency_key)
             raise ProviderToolError("hold_expired", "The slot hold has expired")
 
         self._booking_counter += 1
-        actual_booking_id = booking_id or f"booking-{self._booking_counter}"
+        actual_booking_id = f"booking-{self._booking_counter}"
         booking = Booking(
             id=actual_booking_id,
             provider_id=hold.provider_id,
@@ -138,7 +148,10 @@ class MockProviderAPI:
             slot=hold.slot,
             status=BookingStatus.BOOKED,
         )
-        if outcome == "timeout" and not self.scenario.timeout_after_success:
+        timeout_after_success = self.scenario.timeout_after_success
+        if timeout_after_success is None:
+            timeout_after_success = self._rng.random() < 0.5
+        if outcome == "timeout" and not timeout_after_success:
             raise ProviderToolError("timeout", "Provider timed out before booking completed")
 
         self._bookings[actual_booking_id] = booking
@@ -147,12 +160,13 @@ class MockProviderAPI:
             raise ProviderToolError("timeout", "Provider timed out after booking completed")
         return actual_booking_id
 
-    def get_booking_status(self, idempotency_key: str) -> Booking | None:
+    def get_booking_status(self, idempotency_key: str) -> BookingStatusResult:
         booking_id = self._booking_by_idempotency.get(idempotency_key)
-        if booking_id is None:
-            return None
-        booking = self._bookings.get(booking_id)
-        return booking.model_copy(deep=True) if booking else None
+        if booking_id is not None and (booking := self._bookings.get(booking_id)) is not None:
+            return BookingStatusResult(status=booking.status, booking_id=booking.id)
+        if idempotency_key in self._failed_idempotency:
+            return BookingStatusResult(status=BookingStatus.FAILED)
+        return BookingStatusResult(status=BookingStatus.NOT_FOUND)
 
     def cancel(self, booking_id: str, idempotency_key: str) -> str:
         self._cancel_call_count += 1
@@ -180,6 +194,17 @@ class MockProviderAPI:
             return self._providers_by_id()[provider_id]
         except KeyError as exc:
             raise ProviderToolError("not_found", f"Provider {provider_id!r} was not found") from exc
+
+    def _book_outcome(self) -> str:
+        configured = self.scenario.book_outcome
+        if configured != "random":
+            return configured
+        roll = self._rng.random()
+        if roll < 0.70:
+            return "success"
+        if roll < 0.85:
+            return "slot_taken"
+        return "timeout"
 
     def _booking(self, booking_id: str) -> Booking:
         try:

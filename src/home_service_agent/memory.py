@@ -33,7 +33,9 @@ class PreferenceRepository:
     """Structured preference store with explicit view, correct, and forget APIs."""
 
     def __init__(self, database: str = ":memory:") -> None:
-        self._connection = sqlite3.connect(database)
+        # LangGraph executes nodes in worker threads; this repository is owned
+        # by one local agent instance and may therefore be used by those threads.
+        self._connection = sqlite3.connect(database, check_same_thread=False)
         self._connection.row_factory = sqlite3.Row
         self._connection.execute("PRAGMA foreign_keys = ON")
         self._connection.execute(

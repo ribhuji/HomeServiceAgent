@@ -53,12 +53,10 @@ class BookingCoordinator:
         self.approvals.require_valid(state.run_id, action, approval_id)
 
         idempotency_key = state.idempotency_key or f"book:{state.run_id}"
-        booking_id = state.booking_id or f"booking:{state.run_id}"
         working = transition(
             state.model_copy(
                 update={
                     "idempotency_key": idempotency_key,
-                    "booking_id": booking_id,
                     "booking_status": None,
                 }
             ),
@@ -69,14 +67,15 @@ class BookingCoordinator:
             try:
                 returned_id = self.provider_api.book(
                     working.hold_id or "",
-                    booking_id,
                     idempotency_key,
                 )
             except ProviderToolError as error:
                 if error.code in {"timeout", "unknown"}:
                     status = self.provider_api.get_booking_status(idempotency_key)
-                    if status is not None:
-                        return self._complete(working, status.status, attempt)
+                    if status.status is BookingStatus.BOOKED:
+                        return self._complete(working.model_copy(update={"booking_id": status.booking_id}), status.status, attempt)
+                    if status.status is BookingStatus.FAILED:
+                        return self._failed(working, "The provider reported that booking failed", attempt)
                     if attempt < self.max_attempts:
                         continue
                     return self._failed(working, "Booking could not be verified after retries", attempt)
@@ -95,8 +94,8 @@ class BookingCoordinator:
                 return self._failed(working, f"Booking failed: {error.message}", attempt)
 
             status = self.provider_api.get_booking_status(idempotency_key)
-            if status is not None and status.id == returned_id:
-                return self._complete(working, status.status, attempt)
+            if status.status is BookingStatus.BOOKED and status.booking_id == returned_id:
+                return self._complete(working.model_copy(update={"booking_id": status.booking_id}), status.status, attempt)
             if attempt == self.max_attempts:
                 return self._failed(working, "Booking returned without authoritative verification", attempt)
 

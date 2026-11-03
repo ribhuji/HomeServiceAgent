@@ -73,16 +73,24 @@ def test_graph_resume_after_reconstruction_uses_the_same_sqlite_thread(tmp_path:
 
 class ScriptedExtractionModel:
     def chat(self, messages, **kwargs):
+        if messages[-1].get("role") == "tool":
+            return {"choices": [{"message": {"content": "I found provider options."}}]}
         user_message = messages[-1]["content"]
-        if "I need a plumber" in user_message:
-            content = '{"service":"plumber"}'
-        else:
-            content = '{"area":"Indiranagar","time_window":"this week"}'
-        return {"choices": [{"message": {"content": content}}]}
+        if "Indiranagar" not in user_message:
+            return {"choices": [{"message": {"content": "Please provide: area."}}]}
+        return {"choices": [{"message": {"tool_calls": [{
+            "id": "call-1",
+            "type": "function",
+            "function": {
+                "name": "search_providers",
+                "arguments": '{"service":"plumber","area":"Indiranagar","time_window":"this week"}',
+            },
+        }]}}]}
 
 
 def test_server_graph_can_continue_a_thread_after_graph_reconstruction(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("HOME_SERVICE_AGENT_CHECKPOINT_DB", str(tmp_path / "agent.db"))
+    monkeypatch.setenv("HOME_SERVICE_AGENT_MEMORY_DB", str(tmp_path / "memory.db"))
     config = {"configurable": {"thread_id": "server-restart", "user_id": "user-1"}}
 
     first_graph = build_server_graph(ScriptedExtractionModel())

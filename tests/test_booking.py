@@ -45,7 +45,7 @@ def test_success_is_reported_only_after_authoritative_verification() -> None:
 
     assert outcome.workflow.phase is WorkflowPhase.COMPLETED
     assert outcome.workflow.booking_status is BookingStatus.BOOKED
-    assert outcome.workflow.booking_id == "booking:run-1"
+    assert outcome.workflow.booking_id == "booking-1"
     assert outcome.workflow.idempotency_key == "book:run-1"
     assert outcome.attempts == 1
 
@@ -66,7 +66,7 @@ def test_timeout_after_success_is_reconciled_without_retrying() -> None:
 
 
 def test_timeout_without_success_retries_same_idempotency_key() -> None:
-    api = MockProviderAPI(scenario=MockScenario(book_outcome="timeout"))
+    api = MockProviderAPI(scenario=MockScenario(book_outcome="timeout", timeout_after_success=False))
     ledger = ApprovalLedger()
     state = held_state(api)
     approval_id = approval_for(ledger, state)
@@ -75,13 +75,13 @@ def test_timeout_without_success_retries_same_idempotency_key() -> None:
     original_book = api.book
     calls = 0
 
-    def book_once_then_succeed(hold_id: str, booking_id: str, idempotency_key: str) -> str:
+    def book_once_then_succeed(hold_id: str, idempotency_key: str) -> str:
         nonlocal calls
         calls += 1
         if calls == 1:
-            return original_book(hold_id, booking_id, idempotency_key)
+            return original_book(hold_id, idempotency_key)
         api.scenario.book_outcome = "success"
-        return original_book(hold_id, booking_id, idempotency_key)
+        return original_book(hold_id, idempotency_key)
 
     api.book = book_once_then_succeed  # type: ignore[method-assign]
     outcome = BookingCoordinator(api, ledger).book_after_hold(state, approval_id)
@@ -118,7 +118,7 @@ def test_restart_reuses_persisted_booking_identity() -> None:
     restored = WorkflowState.model_validate(first.workflow.model_dump(mode="json"))
     second = coordinator.book_after_hold(restored, approval_id)
 
-    assert second.workflow.booking_id == "booking:run-1"
+    assert second.workflow.booking_id == "booking-1"
     assert second.workflow.idempotency_key == "book:run-1"
     assert api.book_call_count == 1
 

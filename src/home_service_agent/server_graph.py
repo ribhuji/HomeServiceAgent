@@ -15,6 +15,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
 from home_service_agent.chat import ChatAgent, ChatModel
+from home_service_agent.limits import ExecutionLimits
 from home_service_agent.memory import PreferenceRepository
 
 
@@ -40,6 +41,13 @@ def build_server_graph(
         model=model,
         checkpoint_path=os.getenv("HOME_SERVICE_AGENT_CHECKPOINT_DB"),
         preference_repository=preference_repository,
+        trace_directory=os.getenv("HOME_SERVICE_AGENT_TRACE_DIR", "data/traces"),
+        approval_database=os.getenv("HOME_SERVICE_AGENT_APPROVAL_DB", os.getenv("HOME_SERVICE_AGENT_MEMORY_DB", "data/agent.db")),
+        execution_limits=ExecutionLimits(
+            max_model_turns=int(os.getenv("HOME_SERVICE_AGENT_MAX_MODEL_TURNS", "3")),
+            max_tool_calls=int(os.getenv("HOME_SERVICE_AGENT_MAX_TOOL_CALLS", "12")),
+            max_wall_seconds=float(os.getenv("HOME_SERVICE_AGENT_MAX_WALL_SECONDS", "300")),
+        ),
     )
 
     def respond(state: ServerState, config: RunnableConfig) -> dict[str, list[AIMessage]]:

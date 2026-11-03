@@ -12,7 +12,7 @@ def test_openrouter_config_uses_free_nemotron_default() -> None:
     config = OpenRouterConfig(api_key=None)
 
     assert config.model == DEFAULT_MODEL
-    assert config.model == "nvidia/nemotron-3-ultra-550b-a55b:free"
+    assert config.model == "nvidia/nemotron-3.5-super-vl:free"
     assert config.base_url == "https://openrouter.ai/api/v1"
     assert OpenRouterClient(config).configured is False
 

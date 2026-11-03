@@ -19,13 +19,13 @@ class ExecutionLimits:
     max_model_turns: int = 12
     max_tool_calls: int = 30
     max_retries: int = 3
-    max_wall_seconds: float = 60.0
+    max_wall_seconds: float = 300.0
 
     def __post_init__(self) -> None:
         if self.max_model_turns < 1 or self.max_tool_calls < 1:
             raise ValueError("model and tool limits must be positive")
         if self.max_retries < 0 or self.max_wall_seconds <= 0:
-            raise ValueError("retry and wall-clock limits must be non-negative/positive")
+            raise ValueError("retry limit must be non-negative and wall-clock limit must be positive")
 
 
 @dataclass

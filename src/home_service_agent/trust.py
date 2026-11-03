@@ -5,6 +5,7 @@ Free text is represented as data, never as instructions or a state update.
 
 from typing import Literal
 import json
+import re
 
 from .domain import DomainModel, ProviderDetails, WorkflowState
 
@@ -35,6 +36,29 @@ def provider_reviews_as_data(details: ProviderDetails) -> list[UntrustedToolText
         )
         for index, review in enumerate(details.reviews)
     ]
+
+
+_INJECTION_HINTS = (
+    r"ignore\s+(?:all\s+)?previous instructions",
+    r"reveal\s+(?:the|your)\s+(?:system\s+)?prompt",
+    r"override\s+(?:the|your)\s+safety",
+    r"approve\s+(?:this|immediately)",
+    r"call\s+(?:this|the)\s+tool",
+)
+
+
+def injection_hints(items: list[UntrustedToolText]) -> list[str]:
+    """Return non-blocking flags for suspicious free text.
+
+    Detection is observability only. It never blocks a provider or changes the
+    workflow, because structured permissions and approvals are the controls.
+    """
+
+    flags: list[str] = []
+    for item in items:
+        if any(re.search(pattern, item.text, flags=re.IGNORECASE) for pattern in _INJECTION_HINTS):
+            flags.append(item.source)
+    return flags
 
 
 def render_untrusted_context(items: list[UntrustedToolText]) -> str:

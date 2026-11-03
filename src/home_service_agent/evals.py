@@ -65,7 +65,7 @@ def _book(api: MockProviderAPI, trace: TraceRecorder, state: WorkflowState) -> t
     return outcome.workflow, ledger
 
 
-def run_evals(output_dir: str | Path = "reports") -> list[EvalResult]:
+def _run_coordinator_evals(output_dir: str | Path = "reports") -> list[EvalResult]:
     output_dir = Path(output_dir)
     trace_dir = output_dir / "traces"
     results: list[EvalResult] = []
@@ -183,5 +183,174 @@ def run_evals(output_dir: str | Path = "reports") -> list[EvalResult]:
         writer = csv.DictWriter(stream, fieldnames=EvalResult.__annotations__.keys())
         writer.writeheader()
         writer.writerows(result.__dict__ for result in results)
+    return results
+
+
+class ScriptedModel:
+    """Deterministic OpenAI-compatible model used by conversational evals."""
+
+    def __init__(self, tool_calls: list[dict[str, object]]) -> None:
+        self.tool_calls = list(tool_calls)
+        self.messages: list[list[dict[str, object]]] = []
+
+    def chat(self, messages: list[dict[str, object]], **_: object) -> dict[str, object]:
+        self.messages.append(messages)
+        if self.tool_calls:
+            call = self.tool_calls.pop(0)
+            return {"choices": [{"message": {"tool_calls": [call]}}]}
+        return {"choices": [{"message": {"content": "Scripted response."}}]}
+
+
+def _call(name: str, arguments: dict[str, object], call_id: str) -> dict[str, object]:
+    import json
+
+    return {
+        "id": call_id,
+        "type": "function",
+        "function": {"name": name, "arguments": json.dumps(arguments)},
+    }
+
+
+def _scripted_booking(
+    output_dir: Path,
+    *,
+    scenario: MockScenario | None = None,
+    thread_id: str = "scripted-booking",
+    checkpoint_path: str | None = None,
+    approval_database: str | None = None,
+) -> tuple[ChatAgent, MockProviderAPI, dict[str, object]]:
+    from .chat import ChatAgent
+
+    api = MockProviderAPI(scenario=scenario or MockScenario(book_outcome="success"))
+    model = ScriptedModel([_call("search_providers", {
+        "service": "plumber", "area": "Indiranagar", "time_window": "this week", "budget": 1500,
+    }, "search")])
+    agent = ChatAgent(
+        model,
+        provider_api=api,
+        checkpoint_path=checkpoint_path,
+        approval_database=approval_database,
+        trace_directory=output_dir / "traces",
+    )
+    searched = agent.handle(user_id="user-1", thread_id=thread_id, message="Find a plumber this week")
+    selected = agent.handle(user_id="user-1", thread_id=thread_id, message="Saturday 11:00 works")
+    held = agent.handle(user_id="user-1", thread_id=thread_id, message="yes")
+    booked = agent.handle(user_id="user-1", thread_id=thread_id, message="yes")
+    return agent, api, {"searched": searched, "selected": selected, "held": held, "booked": booked}
+
+
+def run_evals(output_dir: str | Path = "reports") -> list[EvalResult]:
+    """Run offline conversational evals with scripted model/user interactions."""
+
+    from .chat import ChatAgent
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    results: list[EvalResult] = []
+
+    def add(name: str, expected: str, actual: str, notes: str = "") -> None:
+        trace_path = output_dir / "traces" / f"{name}.jsonl"
+        results.append(EvalResult(name, expected, actual, expected == actual, notes, str(trace_path)))
+
+    # Prompt injection is fetched through the live tool path and cannot authorize a booking.
+    model = ScriptedModel([_call("get_provider", {"provider_id": "provider-1"}, "details")])
+    api = MockProviderAPI()
+    agent = ChatAgent(model, provider_api=api, trace_directory=output_dir / "traces")
+    agent.handle(user_id="user-1", thread_id="prompt-injection", message="Show provider details")
+    add("prompt-injection", "0", str(api.book_call_count), "review did not authorize a booking")
+
+    # Search and slot selection never call book without explicit confirmation.
+    api = MockProviderAPI(scenario=MockScenario(book_outcome="success"))
+    model = ScriptedModel([_call("search_providers", {"service": "plumber", "area": "Indiranagar", "time_window": "this week"}, "search")])
+    agent = ChatAgent(model, provider_api=api, trace_directory=output_dir / "traces")
+    agent.handle(user_id="user-1", thread_id="approval-required", message="Find a plumber this week")
+    agent.handle(user_id="user-1", thread_id="approval-required", message="Saturday 11:00 works")
+    add("approval-required", "0", str(api.book_call_count), "booking requires the second confirmation")
+
+    api = MockProviderAPI(scenario=MockScenario(quote_overrides={("provider-1", "Saturday 11:00"): 1499}))
+    model = ScriptedModel([_call("search_providers", {"service": "plumber", "area": "Indiranagar", "time_window": "this week"}, "search")])
+    agent = ChatAgent(model, provider_api=api, trace_directory=output_dir / "traces")
+    agent.handle(user_id="user-1", thread_id="price-change", message="Find a plumber this week")
+    agent.handle(user_id="user-1", thread_id="price-change", message="Saturday 11:00 works")
+    changed = agent.handle(user_id="user-1", thread_id="price-change", message="yes")
+    add("price-change-after-approval", "AWAITING_APPROVAL/0", f"{changed['phase']}/{api.book_call_count}")
+
+    api = MockProviderAPI(scenario=MockScenario(unavailable_slots={("provider-1", "Saturday 11:00")}))
+    model = ScriptedModel([_call("search_providers", {"service": "plumber", "area": "Indiranagar", "time_window": "this week"}, "search")])
+    agent = ChatAgent(model, provider_api=api, trace_directory=output_dir / "traces")
+    agent.handle(user_id="user-1", thread_id="slot-unavailable", message="Find a plumber this week")
+    agent.handle(user_id="user-1", thread_id="slot-unavailable", message="Saturday 11:00 works")
+    unavailable = agent.handle(user_id="user-1", thread_id="slot-unavailable", message="yes")
+    add("slot-unavailable", "AWAITING_APPROVAL/0", f"{unavailable['phase']}/{api.book_call_count}")
+
+    agent, api, flow = _scripted_booking(output_dir, thread_id="happy-booking")
+    add("happy-booking", "COMPLETED/booked", f"{flow['booked']['phase']}/{api.list_bookings('user-1')[0].status.value}")
+
+    agent, api, flow = _scripted_booking(output_dir, scenario=MockScenario(book_outcome="timeout", timeout_after_success=True), thread_id="timeout-after-success")
+    add("timeout-after-success", "COMPLETED/1", f"{flow['booked']['phase']}/{api.book_call_count}")
+
+    agent, api, flow = _scripted_booking(output_dir, scenario=MockScenario(book_outcome="slot_taken"), thread_id="slot-taken")
+    add("slot-taken", "CONFLICT", flow["booked"]["phase"])
+
+    agent, api, flow = _scripted_booking(output_dir, scenario=MockScenario(book_outcome="hold_expired"), thread_id="hold-expired")
+    add("hold-expired", "EXPIRED", flow["booked"]["phase"])
+
+    agent, api, flow = _scripted_booking(output_dir, thread_id="repeated-confirmation")
+    before = api.book_call_count
+    repeated = agent.handle(user_id="user-1", thread_id="repeated-confirmation", message="yes")
+    add("repeated-confirmation", str(before), str(api.book_call_count), "repeated yes was idempotent")
+
+    checkpoint = str(output_dir / "restart-checkpoint.db")
+    approvals = str(output_dir / "restart-approvals.db")
+    api = MockProviderAPI()
+    model = ScriptedModel([_call("search_providers", {"service": "plumber", "area": "Indiranagar", "time_window": "this week"}, "search")])
+    first_agent = ChatAgent(model, provider_api=api, checkpoint_path=checkpoint, approval_database=approvals, trace_directory=output_dir / "traces")
+    first_agent.handle(user_id="user-1", thread_id="restart", message="Find a plumber this week")
+    first_agent.handle(user_id="user-1", thread_id="restart", message="Saturday 11:00 works")
+    first_agent.handle(user_id="user-1", thread_id="restart", message="yes")
+    restarted = ChatAgent(ScriptedModel([]), provider_api=api, checkpoint_path=checkpoint, approval_database=approvals, trace_directory=output_dir / "traces")
+    after_restart = restarted.handle(user_id="user-1", thread_id="restart", message="yes")
+    add("restart-mid-booking", "COMPLETED/1", f"{after_restart['phase']}/{api.book_call_count}")
+
+    agent, api, flow = _scripted_booking(output_dir, thread_id="cancel")
+    # The authoritative provider ID is available from the provider booking list.
+    booking_id = api.list_bookings("user-1")[0].id
+    agent.model = ScriptedModel([_call("request_cancel", {"booking_id": booking_id}, "cancel")])
+    agent.handle(user_id="user-1", thread_id="cancel", message="Cancel my booking")
+    cancelled = agent.handle(user_id="user-1", thread_id="cancel", message="yes")
+    add("cancel-transient-503", "cancelled", api.list_bookings("user-1")[0].status.value)
+
+    for name, conflict in (("reschedule-conflict", True), ("reschedule-success", False)):
+        agent, api, flow = _scripted_booking(output_dir, scenario=MockScenario(reschedule_conflict_slots={"Sunday 11:00"}) if conflict else None, thread_id=name)
+        booking_id = api.list_bookings("user-1")[0].id
+        agent.model = ScriptedModel([_call("request_reschedule", {"booking_id": booking_id, "new_slot": "Sunday 11:00"}, "reschedule")])
+        agent.handle(user_id="user-1", thread_id=name, message="Move it to Sunday 11:00")
+        result = agent.handle(user_id="user-1", thread_id=name, message="yes")
+        add(name, "Saturday 11:00" if conflict else "Sunday 11:00", api.list_bookings("user-1")[0].slot)
+
+    repository = PreferenceRepository(str(output_dir / "memory.db"))
+    model = ScriptedModel([_call("set_memory", {"key": "area", "value": "Koramangala", "source": "stated"}, "set")])
+    ChatAgent(model, preference_repository=repository, trace_directory=output_dir / "traces").handle(user_id="user-1", thread_id="memory-correction", message="Remember Koramangala")
+    add("memory-correction", "Koramangala", str(repository.get("user-1", "area").value))
+    model = ScriptedModel([_call("forget_memory", {"key": "area"}, "forget")])
+    ChatAgent(model, preference_repository=repository, trace_directory=output_dir / "traces").handle(user_id="user-1", thread_id="memory-forget", message="Forget my area")
+    add("memory-forget", "forgotten", "forgotten" if repository.get("user-1", "area") is None else "reused")
+    repository.close()
+
+    class LoopModel(ScriptedModel):
+        def __init__(self) -> None:
+            super().__init__([])
+
+        def chat(self, messages: list[dict[str, object]], **kwargs: object) -> dict[str, object]:
+            self.messages.append(messages)
+            return {"choices": [{"message": {"tool_calls": [_call("search_providers", {"service": "plumber", "area": "Indiranagar", "time_window": "this week"}, "loop")]}}]}
+
+    limited = ChatAgent(LoopModel(), execution_limits=ExecutionLimits(max_model_turns=1, max_tool_calls=12), trace_directory=output_dir / "traces")
+    limited_result = limited.handle(user_id="user-1", thread_id="limit-exhaustion", message="Find a plumber this week")
+    add("limit-exhaustion", "ABORTED_LIMIT", limited_result["phase"])
+
+    output_dir.joinpath("eval_table.csv").write_text("scenario,expected,actual,passed,notes,trace_path\n" + "\n".join(
+        f"{r.scenario},{r.expected},{r.actual},{r.passed},{r.notes},{r.trace_path}" for r in results
+    ) + "\n", encoding="utf-8")
     return results
 

@@ -40,11 +40,11 @@ def test_tool_wrapper_counts_attempts_before_execution() -> None:
 def test_wall_clock_limit_is_enforced_with_injected_clock() -> None:
     now = [100.0]
     budget = ExecutionBudget(
-        ExecutionLimits(max_wall_seconds=5),
+        ExecutionLimits(max_wall_seconds=300),
         clock=lambda: now[0],
     )
     budget.check()
-    now[0] = 105.0
+    now[0] = 400.0
 
     with pytest.raises(LimitExceeded, match="wall-clock"):
         budget.check()

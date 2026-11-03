@@ -1,20 +1,31 @@
 from langchain_core.messages import HumanMessage
+import pytest
 
 from home_service_agent.memory import PreferenceRepository
 from home_service_agent.server_graph import HOME_SERVICE_USER_ID, build_server_graph
 
 
+@pytest.fixture(autouse=True)
+def isolated_memory(monkeypatch):
+    monkeypatch.setenv("HOME_SERVICE_AGENT_MEMORY_DB", ":memory:")
+
+
 class FakeModel:
+    def __init__(self):
+        self.calls = 0
+
     def chat(self, messages, **kwargs):
-        return {
-            "choices": [
-                {
-                    "message": {
-                        "content": '{"service":"plumber","area":"Indiranagar","time_window":"this week"}'
-                    }
-                }
-            ]
-        }
+        self.calls += 1
+        if self.calls > 1:
+            return {"choices": [{"message": {"content": "I found provider options."}}]}
+        return {"choices": [{"message": {"tool_calls": [{
+            "id": "call-1",
+            "type": "function",
+            "function": {
+                "name": "search_providers",
+                "arguments": '{"service":"plumber","area":"Indiranagar","time_window":"this week"}',
+            },
+        }]}}]}
 
 
 def test_server_graph_exposes_messages_channel_and_returns_ai_message() -> None:
