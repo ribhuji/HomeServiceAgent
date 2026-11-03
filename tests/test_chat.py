@@ -14,6 +14,7 @@ class ToolCallingModel:
     def chat(self, messages: list[dict], **kwargs: object) -> dict:
         self.calls.append((messages, kwargs))
         if len(self.calls) == 1:
+            preferences = ',"preferences":{"time":"mornings"}' if "morning" in messages[-1]["content"].lower() else ""
             return {"choices": [{"message": {"role": "assistant", "tool_calls": [{
                 "id": "call-1",
                 "type": "function",
@@ -21,8 +22,8 @@ class ToolCallingModel:
                     "name": "search_providers",
                     "arguments": (
                         '{"service":"plumber","area":"%s","time_window":"this week",'
-                        '"budget":1500,"preferences":{"time":"mornings"}}'
-                    ) % self.area,
+                        '"budget":1500%s}'
+                    ) % (self.area, preferences),
                 },
             }]}}]}
         return {"choices": [{"message": {"content": "I found provider options."}}]}
@@ -99,13 +100,13 @@ def test_agent_lets_model_choose_a_tool_and_executes_it() -> None:
 
     result = ChatAgent(model).handle(
         user_id="user-1",
-        message="Find a plumber in Indiranagar this week",
+        message="Find a plumber in Indiranagar this week under ₹1,500",
     )
 
     assert result["phase"] == "OPTIONS_READY"
     assert len(result["providers"]) == 3
     assert {tool["function"]["name"] for tool in model.calls[0][1]["tools"]} == {
-        "search_providers", "get_provider", "list_bookings",
+        "update_request", "search_providers", "get_provider", "list_bookings",
         "get_memory", "set_memory", "forget_memory",
     }
     assert model.calls[1][0][-1]["role"] == "tool"
@@ -119,6 +120,50 @@ def test_agent_asks_for_missing_information_without_calling_a_tool() -> None:
 
     assert result["phase"] == "NEEDS_CORRECTION"
     assert result["message"] == "Which neighborhood should I search?"
+
+
+def test_clarification_preserves_known_request_fields() -> None:
+    class MultiTurnModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def chat(self, messages: list[dict], **kwargs: object) -> dict:
+            self.calls += 1
+            if self.calls == 1:
+                return {"choices": [{"message": {"tool_calls": [{
+                    "id": "update-1", "type": "function", "function": {
+                        "name": "update_request",
+                        "arguments": '{"service":"plumber","time_window":"this week","budget":1500,"preferences":{"time":"mornings only"}}',
+                    },
+                }]}}]}
+            if self.calls == 2:
+                return {"choices": [{"message": {"content": "Which geographic area should I search?"}}]}
+            if self.calls == 3:
+                return {"choices": [{"message": {"tool_calls": [{
+                    "id": "update-2", "type": "function", "function": {
+                        "name": "update_request", "arguments": '{"area":"Indiranagar"}',
+                    },
+                }]}}]}
+            return {"choices": [{"message": {"content": "I found provider options."}}]}
+
+    model = MultiTurnModel()
+    agent = ChatAgent(model)
+    thread_id = "clarification-preserves-fields"
+
+    first = agent.handle(
+        user_id="user-1",
+        thread_id=thread_id,
+        message="Find a plumber for my kitchen tap this week, mornings only, under ₹1,500.",
+    )
+    assert first["phase"] == "NEEDS_CORRECTION"
+
+    second = agent.handle(user_id="user-1", thread_id=thread_id, message="Indiranagar")
+    assert second["phase"] == "OPTIONS_READY"
+    state = agent.graph.get_state({"configurable": {"thread_id": thread_id}}).values["workflow"]
+    assert state.request.service == "plumber"
+    assert state.request.area == "Indiranagar"
+    assert state.request.time_window == "this week"
+    assert state.request.budget == 1500
 
 
 def test_live_agent_stops_at_model_turn_limit_with_terminal_message() -> None:
@@ -167,7 +212,7 @@ def test_hold_requires_explicit_confirmation_before_provider_call() -> None:
     agent = ChatAgent(HoldRequestModel(), provider_api=api)
     thread_id = "approval-thread"
 
-    pending = agent.handle(user_id="user-1", thread_id=thread_id, message="Find a plumber in Indiranagar this week")
+    pending = agent.handle(user_id="user-1", thread_id=thread_id, message="Find a plumber in Indiranagar this week under ₹1,500")
     assert pending["phase"] == "AWAITING_APPROVAL"
     assert api.book_call_count == 0
 
@@ -185,7 +230,7 @@ def test_search_tool_is_not_reused_after_options_are_ready() -> None:
     model = AlwaysSearchModel()
     agent = ChatAgent(model)
 
-    agent.handle(user_id="user-1", thread_id="hold-thread", message="Find a plumber in Indiranagar this week")
+    agent.handle(user_id="user-1", thread_id="hold-thread", message="Find a plumber in Indiranagar this week under ₹1,500")
     result = agent.handle(user_id="user-1", thread_id="hold-thread", message="Hold Saturday morning")
 
     assert result["message"] == "I already have provider options for this request. Please choose a provider and slot, or ask for a different day or time."
@@ -195,7 +240,7 @@ def test_slot_selection_uses_existing_options_instead_of_searching_again() -> No
     model = ToolCallingModel()
     agent = ChatAgent(model)
     thread_id = "slot-selection-thread"
-    first = agent.handle(user_id="user-1", thread_id=thread_id, message="Find a plumber in Indiranagar this week")
+    first = agent.handle(user_id="user-1", thread_id=thread_id, message="Find a plumber in Indiranagar this week under ₹1,500")
     assert first["phase"] == "OPTIONS_READY"
 
     selected = agent.handle(user_id="user-1", thread_id=thread_id, message="Saturday 11 works")
@@ -210,7 +255,7 @@ def test_new_day_request_researches_from_options_ready() -> None:
     agent = ChatAgent(model)
     thread_id = "search-correction-thread"
 
-    first = agent.handle(user_id="user-1", thread_id=thread_id, message="Find a plumber on Saturday")
+    first = agent.handle(user_id="user-1", thread_id=thread_id, message="Find a plumber in Indiranagar on Saturday under ₹1,500")
     assert first["phase"] == "OPTIONS_READY"
 
     second = agent.handle(user_id="user-1", thread_id=thread_id, message="No, check Sunday instead")
@@ -235,7 +280,7 @@ def test_live_chat_saves_explicit_area_and_preferences(tmp_path: Path) -> None:
 
     ChatAgent(model, preference_repository=repository).handle(
         user_id="user-1",
-        message="Find a plumber in Koramangala this week; mornings only",
+        message="Find a plumber in Koramangala this week; mornings only under ₹1,500",
     )
 
     assert repository.get("user-1", "area").value == "Koramangala"
@@ -251,7 +296,7 @@ def test_live_chat_reuses_confirmed_memory_for_a_new_thread(tmp_path: Path) -> N
     result = ChatAgent(model, preference_repository=repository).handle(
         user_id="user-1",
         thread_id="new-thread",
-        message="Find a plumber this week",
+        message="Find a plumber in Koramangala this week under ₹1,500",
     )
 
     assert result["phase"] == "OPTIONS_READY"

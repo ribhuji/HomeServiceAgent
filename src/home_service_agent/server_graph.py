@@ -5,7 +5,7 @@ official Agent Chat UI. Domain workflow state remains owned by ChatAgent and
 the existing safety coordinators.
 """
 
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, NotRequired, TypedDict
 import os
 from pathlib import Path
 
@@ -15,6 +15,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
 from home_service_agent.chat import ChatAgent, ChatModel
+from home_service_agent.domain import Provider, WorkflowState
 from home_service_agent.limits import ExecutionLimits
 from home_service_agent.memory import PreferenceRepository
 
@@ -26,6 +27,10 @@ HOME_SERVICE_USER_ID = "home-service-user"
 
 class ServerState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
+    # The LangGraph Server thread is the durable conversation boundary for the
+    # live UI. Keeping the domain snapshot here avoids nesting a second SQLite
+    # checkpointer inside the server worker.
+    domain_state: NotRequired[dict[str, Any] | None]
 
 
 def build_server_graph(
@@ -39,7 +44,9 @@ def build_server_graph(
         preference_repository = PreferenceRepository(memory_path)
     agent = ChatAgent(
         model=model,
-        checkpoint_path=os.getenv("HOME_SERVICE_AGENT_CHECKPOINT_DB"),
+        # The server runtime already checkpoints ServerState. A nested
+        # SqliteSaver is incompatible with the local dev server's serializer.
+        checkpoint_path=None,
         preference_repository=preference_repository,
         trace_directory=os.getenv("HOME_SERVICE_AGENT_TRACE_DIR", "data/traces"),
         approval_database=os.getenv("HOME_SERVICE_AGENT_APPROVAL_DB", os.getenv("HOME_SERVICE_AGENT_MEMORY_DB", "data/agent.db")),
@@ -53,12 +60,35 @@ def build_server_graph(
     def respond(state: ServerState, config: RunnableConfig) -> dict[str, list[AIMessage]]:
         last_message = state["messages"][-1]
         thread_id = config.get("configurable", {}).get("thread_id", "local-ui-thread")
+        agent_config = {"configurable": {"thread_id": thread_id}}
+        snapshot = state.get("domain_state")
+        if snapshot:
+            hydrated: dict[str, Any] = {
+                "workflow": WorkflowState.model_validate(snapshot["workflow"]),
+                "request_update": None,
+            }
+            if snapshot.get("providers"):
+                hydrated["providers"] = [Provider.model_validate(item) for item in snapshot["providers"]]
+            if snapshot.get("user_message"):
+                hydrated["user_message"] = snapshot["user_message"]
+            agent.graph.update_state(agent_config, hydrated)
         result = agent.handle(
             user_id=HOME_SERVICE_USER_ID,
             thread_id=thread_id,
             message=str(last_message.content),
         )
-        return {"messages": [AIMessage(content=result["message"])]}
+        values = agent.graph.get_state(agent_config).values
+        domain_state = None
+        if values:
+            domain_state = {
+                "workflow": values["workflow"].model_dump(mode="json"),
+                "providers": [provider.model_dump(mode="json") for provider in values.get("providers", [])],
+                "user_message": values.get("user_message"),
+            }
+        return {
+            "messages": [AIMessage(content=result["message"])],
+            "domain_state": domain_state,
+        }
 
     builder = StateGraph(ServerState)
     builder.add_node("respond", respond)

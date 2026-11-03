@@ -8,6 +8,28 @@ PROVIDER_TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "update_request",
+            "description": (
+                "Record request facts explicitly stated by the user. This is not a provider action. "
+                "Call this whenever the user gives any service, geographic area, date/time window, "
+                "budget, or preference. Include only facts from the current user message; omit unknown fields."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "service": {"type": "string"},
+                    "area": {"type": "string", "description": "Geographic neighborhood or area, not a room or fixture."},
+                    "time_window": {"type": "string"},
+                    "budget": {"type": "integer", "minimum": 0},
+                    "preferences": {"type": "object", "additionalProperties": {"type": "string"}},
+                },
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_memory",
             "description": "Read the user's confirmed saved preferences. Never expose unconfirmed inferred facts as remembered facts.",
             "parameters": {

@@ -6,6 +6,7 @@ services:
       target: langgraph
     environment:
       HOME_SERVICE_AGENT_MEMORY_DB: /app/data/agent.db
+      HOME_SERVICE_AGENT_CHECKPOINT_DB: /app/data/checkpoints.db
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-nvidia/nemotron-3.5-super-vl:free}
       HOME_SERVICE_AGENT_MAX_MODEL_TURNS: ${HOME_SERVICE_AGENT_MAX_MODEL_TURNS:-3}

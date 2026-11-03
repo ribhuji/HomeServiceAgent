@@ -232,7 +232,7 @@ def _scripted_booking(
         approval_database=approval_database,
         trace_directory=output_dir / "traces",
     )
-    searched = agent.handle(user_id="user-1", thread_id=thread_id, message="Find a plumber this week")
+    searched = agent.handle(user_id="user-1", thread_id=thread_id, message="Find a plumber in Indiranagar this week under ₹1,500")
     selected = agent.handle(user_id="user-1", thread_id=thread_id, message="Saturday 11:00 works")
     held = agent.handle(user_id="user-1", thread_id=thread_id, message="yes")
     booked = agent.handle(user_id="user-1", thread_id=thread_id, message="yes")
@@ -263,14 +263,14 @@ def run_evals(output_dir: str | Path = "reports") -> list[EvalResult]:
     api = MockProviderAPI(scenario=MockScenario(book_outcome="success"))
     model = ScriptedModel([_call("search_providers", {"service": "plumber", "area": "Indiranagar", "time_window": "this week"}, "search")])
     agent = ChatAgent(model, provider_api=api, trace_directory=output_dir / "traces")
-    agent.handle(user_id="user-1", thread_id="approval-required", message="Find a plumber this week")
+    agent.handle(user_id="user-1", thread_id="approval-required", message="Find a plumber in Indiranagar this week")
     agent.handle(user_id="user-1", thread_id="approval-required", message="Saturday 11:00 works")
     add("approval-required", "0", str(api.book_call_count), "booking requires the second confirmation")
 
     api = MockProviderAPI(scenario=MockScenario(quote_overrides={("provider-1", "Saturday 11:00"): 1499}))
     model = ScriptedModel([_call("search_providers", {"service": "plumber", "area": "Indiranagar", "time_window": "this week"}, "search")])
     agent = ChatAgent(model, provider_api=api, trace_directory=output_dir / "traces")
-    agent.handle(user_id="user-1", thread_id="price-change", message="Find a plumber this week")
+    agent.handle(user_id="user-1", thread_id="price-change", message="Find a plumber in Indiranagar this week")
     agent.handle(user_id="user-1", thread_id="price-change", message="Saturday 11:00 works")
     changed = agent.handle(user_id="user-1", thread_id="price-change", message="yes")
     add("price-change-after-approval", "AWAITING_APPROVAL/0", f"{changed['phase']}/{api.book_call_count}")
@@ -278,7 +278,7 @@ def run_evals(output_dir: str | Path = "reports") -> list[EvalResult]:
     api = MockProviderAPI(scenario=MockScenario(unavailable_slots={("provider-1", "Saturday 11:00")}))
     model = ScriptedModel([_call("search_providers", {"service": "plumber", "area": "Indiranagar", "time_window": "this week"}, "search")])
     agent = ChatAgent(model, provider_api=api, trace_directory=output_dir / "traces")
-    agent.handle(user_id="user-1", thread_id="slot-unavailable", message="Find a plumber this week")
+    agent.handle(user_id="user-1", thread_id="slot-unavailable", message="Find a plumber in Indiranagar this week")
     agent.handle(user_id="user-1", thread_id="slot-unavailable", message="Saturday 11:00 works")
     unavailable = agent.handle(user_id="user-1", thread_id="slot-unavailable", message="yes")
     add("slot-unavailable", "AWAITING_APPROVAL/0", f"{unavailable['phase']}/{api.book_call_count}")
@@ -305,7 +305,7 @@ def run_evals(output_dir: str | Path = "reports") -> list[EvalResult]:
     api = MockProviderAPI()
     model = ScriptedModel([_call("search_providers", {"service": "plumber", "area": "Indiranagar", "time_window": "this week"}, "search")])
     first_agent = ChatAgent(model, provider_api=api, checkpoint_path=checkpoint, approval_database=approvals, trace_directory=output_dir / "traces")
-    first_agent.handle(user_id="user-1", thread_id="restart", message="Find a plumber this week")
+    first_agent.handle(user_id="user-1", thread_id="restart", message="Find a plumber in Indiranagar this week")
     first_agent.handle(user_id="user-1", thread_id="restart", message="Saturday 11:00 works")
     first_agent.handle(user_id="user-1", thread_id="restart", message="yes")
     restarted = ChatAgent(ScriptedModel([]), provider_api=api, checkpoint_path=checkpoint, approval_database=approvals, trace_directory=output_dir / "traces")
@@ -346,7 +346,7 @@ def run_evals(output_dir: str | Path = "reports") -> list[EvalResult]:
             return {"choices": [{"message": {"tool_calls": [_call("search_providers", {"service": "plumber", "area": "Indiranagar", "time_window": "this week"}, "loop")]}}]}
 
     limited = ChatAgent(LoopModel(), execution_limits=ExecutionLimits(max_model_turns=1, max_tool_calls=12), trace_directory=output_dir / "traces")
-    limited_result = limited.handle(user_id="user-1", thread_id="limit-exhaustion", message="Find a plumber this week")
+    limited_result = limited.handle(user_id="user-1", thread_id="limit-exhaustion", message="Find a plumber in Indiranagar this week")
     add("limit-exhaustion", "ABORTED_LIMIT", limited_result["phase"])
 
     output_dir.joinpath("eval_table.csv").write_text("scenario,expected,actual,passed,notes,trace_path\n" + "\n".join(
